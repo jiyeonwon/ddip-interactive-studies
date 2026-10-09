@@ -32,7 +32,7 @@ http://127.0.0.1:8765 에 접속합니다. 카메라는 localhost 또는 HTTPS�
 ## 검증
 
 ```sh
-node --test tests/camera-lifecycle.test.cjs
+node --test tests/*.test.cjs
 ```
 
 실제 카메라/얼굴 추적은 카메라 권한과 장치가 필요합니다. 자동 테스트는 스트림 종료·권한 거부·재진입 로직을 검증하며 실제 얼굴 인식 정확도를 검증하지 않습니다.
