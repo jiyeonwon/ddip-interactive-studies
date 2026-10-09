@@ -1,0 +1,66 @@
+
+body {
+  margin: 0;
+  min-height: 100vh;
+
+  /* [실습 1] 배경색 변경 */
+  background-color: #f0eaff;
+
+  display: flex;
+
+  /* 기존 중앙 배치 유지 */
+  justify-content: center;
+  align-items: center;
+
+  font-family: Arial, sans-serif;
+}
+
+main {
+  /* 기존 중앙 정렬 유지 */
+  text-align: center;
+}
+
+#symbol {
+  /* 기존 간격 유지 */
+  margin: 0 0 30px;
+
+  /* 기존 기호 크기 유지 */
+  font-size: 200px;
+
+  /* [실습 7] 기호 두께 변경 */
+  font-weight: 400;
+
+  /* [실습 8] 기호 색상 변경 */
+  color: #7545d9;
+
+  line-height: 1.2;
+}
+
+button {
+  /* [실습 9] 버튼 글자 크기 변경 */
+  font-size: 26px;
+
+  font-weight: 700;
+
+  /* [실습 10] 버튼 글자 색상 변경 */
+  color: #ffffff;
+
+  /* [실습 11] 버튼 배경색 변경 */
+  background-color: #7545d9;
+
+  /* [실습 12] 버튼 안쪽 여백 변경 */
+  padding: 20px 40px;
+
+  /* [실습 13] 버튼 테두리 추가 */
+  border: 2px solid #5429a8;
+
+  /* [실습 14] 버튼 모서리 변경 */
+  border-radius: 40px;
+
+  cursor: pointer;
+}
+
+button:hover {
+  /* [실습 15] 마우스를 올렸을 때 색상 변경 */
+  background-color: #b69aff;
+}

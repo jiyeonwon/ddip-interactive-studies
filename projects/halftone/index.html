@@ -1,0 +1,313 @@
+
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BLUE HALFTONE CAM</title>
+
+  <style>
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: #EAF2FF;
+      font-family: Arial, sans-serif;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .container {
+      width: min(640px, calc(100vw - 32px));
+    }
+
+    h1 {
+      color: #2455FF;
+      font-size: 32px;
+      font-weight: 800;
+      margin-bottom: 8px;
+      letter-spacing: -1px;
+    }
+
+    .subtitle {
+      color: #6885C7;
+      font-size: 13px;
+      margin-bottom: 24px;
+    }
+
+    .controls {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+
+    button, select {
+      background: #2455FF;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      padding: 12px 16px;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    button:disabled {
+      opacity: 0.5;
+      cursor: default;
+    }
+
+    button:hover:not(:disabled) {
+      background: #173BC2;
+    }
+
+    label {
+      color: #2455FF;
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    input[type="range"] {
+      accent-color: #2455FF;
+      width: 100px;
+    }
+
+    #p5-holder {
+      line-height: 0;
+    }
+
+    canvas {
+      display: block;
+      max-width: 100%;
+      height: auto !important;
+    }
+
+    .footer {
+      font-size: 12px;
+      color: #6885C7;
+      margin-top: 12px;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="container">
+
+    <h1 style="color: #2455FF;">BLUE HALFTONE CAM</h1>
+
+    <div class="controls">
+
+      <button id="startCam">START CAMERA</button>
+
+      <label for="gap">SIZE</label>
+      <input
+        id="gap"
+        type="range"
+        min="4"
+        max="32"
+        value="12"
+        step="1"
+      >
+
+      <label for="mode">MODE</label>
+      <select id="mode">
+        <option value="dot">DOT</option>
+        <option value="ascii">ASCII</option>
+      </select>
+
+    </div>
+
+    <div id="p5-holder"></div>
+
+    <div class="footer">
+      SUBVISUAL EXPERIMENT — BLUE / 01
+    </div>
+  </div>
+
+  <script src="../../camera-lifecycle.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/p5@2.0.5/lib/p5.min.js"></script>
+
+  <script>
+    let video = null;
+
+    // [디자인 변경 1] 캔버스 크기
+    const W = 640;
+    const H = 480;
+
+    // [디자인 변경 2] 색상 설정
+    const BG_COLOR = '#EAF2FF';
+    const DOT_COLOR = '#2455FF';
+
+    // [디자인 변경 3] 대비
+    // 숫자가 높을수록 명암 차이가 강해짐
+    const CONTRAST = 1.4;
+
+    let gapSlider;
+    let startBtn;
+    let modeSelect;
+    let usingCamera = false;
+    let cameraReady = false;
+
+    new p5((p) => {
+
+      p.setup = () => {
+        const cnv = p.createCanvas(W, H);
+        cnv.parent('p5-holder');
+
+        p.noStroke();
+        p.pixelDensity(1);
+        p.textFont('monospace');
+
+        gapSlider = document.getElementById('gap');
+        startBtn = document.getElementById('startCam');
+        modeSelect = document.getElementById('mode');
+
+        startBtn.addEventListener('click', startCamera);
+      };
+
+      p.draw = () => {
+
+        // [디자인 변경 4] 배경색
+        p.background(BG_COLOR);
+
+        // 카메라 실행 전 안내 메시지
+        if (!usingCamera || !cameraReady || !video) {
+          p.fill(DOT_COLOR);
+          p.textAlign(p.CENTER, p.CENTER);
+          p.textSize(15);
+
+          p.text(
+            'CLICK START CAMERA',
+            W / 2,
+            H / 2
+          );
+          return;
+        }
+
+        const GAP = parseInt(gapSlider.value, 10);
+        const MODE = modeSelect.value;
+
+        const cols = Math.floor(W / GAP);
+        const rows = Math.floor(H / GAP);
+
+        video.loadPixels();
+
+        if (video.pixels.length === 0) return;
+
+        p.fill(DOT_COLOR);
+        p.noStroke();
+
+        // [디자인 변경 5] ASCII 문자 구성
+        // 왼쪽은 어두운 영역, 오른쪽은 밝은 영역
+        const ASCII = '@#%*+=-:. ';
+
+        for (let y = 0; y < rows; y++) {
+          for (let x = 0; x < cols; x++) {
+
+            // 좌우 반전된 카메라 영상
+            const sourceX = Math.floor(
+              (1 - (x + 0.5) / cols) * video.width
+            );
+
+            const sourceY = Math.floor(
+              (y + 0.5) / rows * video.height
+            );
+
+            const sx = p.constrain(
+              sourceX, 0, video.width - 1
+            );
+
+            const sy = p.constrain(
+              sourceY, 0, video.height - 1
+            );
+
+            const idx = (sx + sy * video.width) * 4;
+
+            const r = video.pixels[idx] || 0;
+            const g = video.pixels[idx + 1] || 0;
+            const b = video.pixels[idx + 2] || 0;
+
+            // 영상의 밝기 계산
+            let bright =
+              r * 0.299 +
+              g * 0.587 +
+              b * 0.114;
+
+            // [디자인 변경 6] 명암 대비
+            bright = (bright - 128) * CONTRAST + 128;
+            bright = p.constrain(bright, 0, 255);
+
+            const cx = x * GAP + GAP * 0.5;
+            const cy = y * GAP + GAP * 0.5;
+
+            if (MODE === 'dot') {
+
+              // DOT MODE
+              // 어두운 영역일수록 큰 원 표시
+              const d = p.map(
+                bright, 0, 255, GAP, 0, true
+              );
+
+              p.circle(cx, cy, d);
+
+            } else {
+
+              // ASCII MODE
+              // 밝기에 따라 다른 문자 표시
+              const index = Math.floor(
+                p.map(
+                  bright,
+                  0,
+                  255,
+                  0,
+                  ASCII.length - 1,
+                  true
+                )
+              );
+
+              const character = ASCII[index];
+
+              p.textAlign(p.CENTER, p.CENTER);
+              p.textSize(GAP);
+              p.text(character, cx, cy);
+            }
+          }
+        }
+      };
+
+      window.addEventListener("study-camera-error", () => {
+        usingCamera = false;
+        cameraReady = false;
+        startBtn.disabled = false;
+        if (video) video.remove();
+        video = null;
+      });
+
+      function startCamera() {
+        if (usingCamera) return;
+
+        usingCamera = true;
+        startBtn.disabled = true;
+
+        video = p.createCapture(
+          {
+            video: {
+              width: { ideal: 640 },
+              height: { ideal: 480 },
+              facingMode: 'user'
+            },
+            audio: false
+          },
+          () => {
+            cameraReady = true;
+          }
+        );
+
+        video.hide();
+      }
+    });
+  </script>
+</body>
+</html>

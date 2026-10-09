@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>기호 바꾸기</title>
+
+  <!-- CSS 파일 연결 -->
+  <link rel="stylesheet" href="style.css">
+
+  <!-- JavaScript 파일 연결
+       defer: HTML 요소를 모두 읽은 후 실행 -->
+  <script src="sketch.js" defer></script>
+</head>
+
+<body>
+  <main>
+    <!-- 기호를 보여주는 영역
+         id는 CSS와 JavaScript에서 이 요소를 찾는 이름 -->
+    <p id="symbol" aria-live="polite">#</p>
+
+    <!-- [실습 16] 버튼 문구 변경
+         "눌러보세요" → "다음 기호" -->
+    <button id="changeButton" type="button">눌러보세요</button>
+  </main>
+</body>
+</html>

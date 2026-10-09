@@ -1,0 +1,649 @@
+
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Face Emoji Camera</title>
+
+  <style>
+    /* [디자인 1] 전체 배경 */
+    html, body {
+      margin: 0;
+      padding: 0;
+      min-height: 100%;
+      background: #ffffff;
+      font-family: Arial, sans-serif;
+    }
+
+    /* 전체 화면 중앙 정렬 */
+    body {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      gap: 24px;
+    }
+
+    /* [디자인 2] 상단 제목 */
+    h1 {
+      margin: 0;
+      color: #222222;
+      font-size: 28px;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+    }
+
+    /* 카메라 화면 */
+    #camera-container {
+      width: min(640px, 94vw);
+    }
+
+    canvas {
+      display: block;
+      width: 100% !important;
+      height: auto !important;
+      border-radius: 8px;
+    }
+
+    /* 상태 안내 */
+    #status {
+      font-size: 13px;
+      color: #777777;
+      text-align: center;
+    }
+
+    /* 오류 안내 */
+    #warn {
+      display: none;
+      padding: 10px 16px;
+      background: #ffe8e8;
+      color: #aa2222;
+      font-size: 13px;
+      border-radius: 6px;
+      text-align: center;
+    }
+  </style>
+</head>
+
+<body>
+
+  <h1>FACE EMOJI CAM</h1>
+
+  <div id="camera-container"></div>
+
+  <div id="status">Loading face tracking...</div>
+  <div id="warn"></div>
+
+  <!-- p5.js -->
+  <script src="../../camera-lifecycle.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/p5@1.9.3/lib/p5.min.js"></script>
+
+  <!-- MediaPipe 얼굴 인식 -->
+  <script type="module">
+
+    import {
+      FaceLandmarker,
+      FilesetResolver
+    } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.13";
+
+    /*
+      [디자인 변경 3]
+      얼굴에 적용할 이모지
+
+      눈: 별
+      코: 당구공
+      입: 지폐
+      귀: 제거
+      머리: 왕관
+    */
+
+    const EMOJI = {
+      leftEye: "⭐️",
+      rightEye: "⭐️",
+      nose: "🎱",
+      mouth: "💵",
+      crown: "👑"
+    };
+
+    // 카메라 화면 크기
+    const W = 640;
+    const H = 480;
+
+    /*
+      [디자인 변경 4]
+      이모지 크기 조절
+
+      값을 키우면 이모지가 커짐
+    */
+
+    const EYE_SIZE = 0.65;
+    const NOSE_SIZE = 0.65;
+    const MOUTH_SIZE = 0.85;
+    const CROWN_SIZE = 1.4;
+
+    /*
+      [디자인 변경 5]
+      위치 보정
+
+      0 = 실제 인식된 위치
+      양수 = 아래로 이동
+      음수 = 위로 이동
+    */
+
+    const EYE_OFFSET_Y = 0;
+    const NOSE_OFFSET_Y = 0;
+    const MOUTH_OFFSET_Y = 0;
+
+    /*
+      [기능 개선 1]
+      움직임 보정
+
+      0.15 = 부드럽지만 반응이 느림
+      0.35 = 적당히 부드러움
+      0.7 = 빠르게 따라감
+    */
+
+    const SMOOTHING = 0.45;
+
+    // 얼굴 인식 관련 변수
+    let faceLandmarker = null;
+    let ready = false;
+
+    let video = null;
+    let lastVideoTime = -1;
+    let lastResult = null;
+
+    // 이모지의 이전 위치 저장
+    const smoothPoints = {};
+
+    const statusEl = document.getElementById("status");
+    const warnEl = document.getElementById("warn");
+
+    function showWarning(message) {
+      warnEl.textContent = message;
+      warnEl.style.display = "block";
+      statusEl.textContent = "Camera unavailable";
+    }
+
+    /*
+      [기능 개선 2]
+      MediaPipe 얼굴 추적 모델 로딩
+    */
+
+    try {
+
+      const resolver =
+        await FilesetResolver.forVisionTasks(
+          "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.13/wasm"
+        );
+
+      faceLandmarker =
+        await FaceLandmarker.createFromOptions(
+          resolver,
+          {
+            baseOptions: {
+              modelAssetPath:
+                "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task"
+            },
+
+            runningMode: "VIDEO",
+
+            // 얼굴 한 명만 추적
+            numFaces: 1,
+
+            minFaceDetectionConfidence: 0.5,
+            minFacePresenceConfidence: 0.5,
+            minTrackingConfidence: 0.5
+          }
+        );
+
+      ready = true;
+
+      statusEl.textContent = "Face tracking ready";
+
+    } catch (error) {
+
+      console.error(error);
+      showWarning("얼굴 인식 모델을 불러오지 못했습니다.");
+
+    }
+
+    /*
+      [기능 개선 3]
+      얼굴 주요 랜드마크
+
+      하나의 점 대신 여러 위치를
+      활용하여 정확도를 높임
+    */
+
+    const IDX = {
+
+      // 왼쪽 눈 양 끝
+      LEFT_EYE_A: 33,
+      LEFT_EYE_B: 133,
+
+      // 오른쪽 눈 양 끝
+      RIGHT_EYE_A: 362,
+      RIGHT_EYE_B: 263,
+
+      // 홍채 중심
+      LEFT_IRIS: 468,
+      RIGHT_IRIS: 473,
+
+      // 코끝
+      NOSE: 1,
+
+      // 입술
+      UPPER_LIP: 13,
+      LOWER_LIP: 14,
+
+      // 입 양 끝
+      MOUTH_LEFT: 61,
+      MOUTH_RIGHT: 291,
+
+
+      // 이마
+      FOREHEAD: 10
+    };
+
+    /*
+      랜드마크 좌표 변환
+      0~1 범위를 실제 픽셀 위치로 변환
+    */
+
+    function toCanvas(point) {
+
+      if (!point) return null;
+
+      return {
+        x: point.x * W,
+        y: point.y * H
+      };
+    }
+
+    // 두 점의 중앙 좌표 계산
+    function midpoint(a, b) {
+
+      if (!a || !b) return null;
+
+      return {
+        x: (a.x + b.x) / 2,
+        y: (a.y + b.y) / 2
+      };
+    }
+
+    // 두 점 사이 거리
+    function distance(a, b) {
+
+      if (!a || !b) return 0;
+
+      return Math.hypot(
+        a.x - b.x,
+        a.y - b.y
+      );
+    }
+
+    /*
+      [기능 개선 4]
+      이모지 위치 부드럽게 보정
+
+      얼굴의 미세한 흔들림을 줄임
+    */
+
+    function smoothPosition(name, target) {
+
+      if (!target) return null;
+
+      if (!smoothPoints[name]) {
+
+        smoothPoints[name] = {
+          x: target.x,
+          y: target.y
+        };
+
+      } else {
+
+        smoothPoints[name].x +=
+          (target.x - smoothPoints[name].x)
+          * SMOOTHING;
+
+        smoothPoints[name].y +=
+          (target.y - smoothPoints[name].y)
+          * SMOOTHING;
+      }
+
+      return smoothPoints[name];
+    }
+
+    /*
+      p5.js 카메라 및 그리기
+    */
+
+    new p5((p) => {
+
+      p.setup = () => {
+
+        const canvas = p.createCanvas(W, H);
+
+        canvas.parent("camera-container");
+
+        p.pixelDensity(1);
+        p.textAlign(p.CENTER, p.CENTER);
+        p.textFont("Arial");
+
+        // 셀피 카메라
+        video = p.createCapture(
+          {
+            video: {
+              width: {
+                ideal: W
+              },
+              height: {
+                ideal: H
+              },
+              facingMode: "user"
+            },
+            audio: false
+          }
+        );
+
+        video.size(W, H);
+        video.hide();
+
+        video.elt.addEventListener("error", () => {
+          showWarning("카메라를 실행할 수 없습니다.");
+        });
+
+      };
+
+      p.draw = () => {
+
+        // [디자인 변경 6] 흰색 배경
+        p.background(255);
+
+        if (!video || !video.elt.videoWidth) {
+          return;
+        }
+
+        p.push();
+
+        // 거울처럼 좌우 반전
+        p.translate(W, 0);
+        p.scale(-1, 1);
+
+        // 카메라 영상 표시
+        p.image(video, 0, 0, W, H);
+
+        /*
+          [기능 개선 5]
+          새로운 카메라 프레임이
+          들어올 때만 얼굴 인식
+        */
+
+        if (ready && faceLandmarker) {
+
+          if (
+            video.elt.readyState >= 2 &&
+            video.elt.currentTime !== lastVideoTime
+          ) {
+
+            lastVideoTime =
+              video.elt.currentTime;
+
+            try {
+
+              const now = performance.now();
+
+              lastResult =
+                faceLandmarker.detectForVideo(
+                  video.elt,
+                  now
+                );
+
+            } catch (error) {
+
+              console.error(error);
+
+            }
+          }
+        }
+
+        /*
+          얼굴을 인식하면
+          눈, 코, 입, 왕관 표시
+        */
+
+        if (
+          lastResult &&
+          lastResult.faceLandmarks &&
+          lastResult.faceLandmarks.length > 0
+        ) {
+
+          drawFace(
+            p,
+            lastResult.faceLandmarks[0]
+          );
+
+        } else {
+
+          // 얼굴이 사라지면 이전 위치 초기화
+          for (const key in smoothPoints) {
+            delete smoothPoints[key];
+          }
+
+        }
+
+        p.pop();
+      };
+    });
+
+    /*
+      [기능 개선 6]
+      얼굴의 실제 위치를 바탕으로
+      각 이모지 배치
+    */
+
+    function drawFace(p, landmarks) {
+
+      const pick = (index) => {
+        return toCanvas(landmarks[index]);
+      };
+
+      // 눈 위치
+      const leftEyeA = pick(IDX.LEFT_EYE_A);
+      const leftEyeB = pick(IDX.LEFT_EYE_B);
+
+      const rightEyeA = pick(IDX.RIGHT_EYE_A);
+      const rightEyeB = pick(IDX.RIGHT_EYE_B);
+
+      /*
+        홍채 위치가 존재하면 홍채 사용
+        없으면 눈 양 끝의 중앙 사용
+      */
+
+      const leftEye =
+        pick(IDX.LEFT_IRIS) ||
+        midpoint(leftEyeA, leftEyeB);
+
+      const rightEye =
+        pick(IDX.RIGHT_IRIS) ||
+        midpoint(rightEyeA, rightEyeB);
+
+      // 코끝 위치
+      const nose = pick(IDX.NOSE);
+
+      /*
+        [기능 개선 7]
+        입술 위아래와 양 끝을 활용해
+        실제 입 중심 계산
+      */
+
+      const upperLip = pick(IDX.UPPER_LIP);
+      const lowerLip = pick(IDX.LOWER_LIP);
+
+      const mouthLeft = pick(IDX.MOUTH_LEFT);
+      const mouthRight = pick(IDX.MOUTH_RIGHT);
+
+      const lipCenter =
+        midpoint(upperLip, lowerLip);
+
+      const mouthSideCenter =
+        midpoint(mouthLeft, mouthRight);
+
+      const mouth =
+        lipCenter && mouthSideCenter
+          ? midpoint(lipCenter, mouthSideCenter)
+          : lipCenter || mouthSideCenter;
+
+
+      // 이마 위치
+      const forehead = pick(IDX.FOREHEAD);
+
+      /*
+        [기능 개선 8]
+        눈 사이 거리를 기준으로
+        이모지 크기 자동 계산
+      */
+
+      let eyeDist = distance(leftEye, rightEye);
+
+      let base = Math.max(
+        20,
+        Math.min(85, eyeDist * 0.8)
+      );
+
+      /*
+        공통 이모지 그리기 함수
+
+        name: 위치 저장용 이름
+        point: 얼굴 인식 좌표
+        emoji: 표시할 이모지
+        scale: 크기 배율
+        offsetY: 세로 위치 조절
+      */
+
+      function drawEmoji(
+        name,
+        point,
+        emoji,
+        scale = 1,
+        offsetY = 0
+      ) {
+
+        if (!point) return;
+
+        // 위치 부드럽게 보정
+        const pos = smoothPosition(
+          name,
+          point
+        );
+
+        p.push();
+
+        p.noStroke();
+
+        p.translate(
+          pos.x,
+          pos.y + offsetY
+        );
+
+        // 카메라 좌우 반전에 의해
+        // 이모지 글자가 뒤집히는 현상 방지
+        p.scale(-1, 1);
+
+        p.textAlign(
+          p.CENTER,
+          p.CENTER
+        );
+
+        p.textSize(base * scale);
+
+        p.text(emoji, 0, 0);
+
+        p.pop();
+      }
+
+      /*
+        [디자인 변경 7]
+        눈: ⭐️
+
+        홍채 중심을 따라 움직임
+      */
+
+      drawEmoji(
+        "leftEye",
+        leftEye,
+        EMOJI.leftEye,
+        EYE_SIZE,
+        EYE_OFFSET_Y
+      );
+
+      drawEmoji(
+        "rightEye",
+        rightEye,
+        EMOJI.rightEye,
+        EYE_SIZE,
+        EYE_OFFSET_Y
+      );
+
+      /*
+        [디자인 변경 8]
+        코: 🎱
+
+        기존 -15px 보정 제거
+        실제 코끝에 배치
+      */
+
+      drawEmoji(
+        "nose",
+        nose,
+        EMOJI.nose,
+        NOSE_SIZE,
+        NOSE_OFFSET_Y
+      );
+
+      /*
+        [디자인 변경 9]
+        입: 💵
+
+        입 중심에 배치
+      */
+
+      drawEmoji(
+        "mouth",
+        mouth,
+        EMOJI.mouth,
+        MOUTH_SIZE,
+        MOUTH_OFFSET_Y
+      );
+
+      /*
+        [디자인 변경 11]
+        왕관: 👑
+
+        얼굴의 이마 랜드마크를 기준으로
+        머리 위쪽에 배치
+      */
+
+      if (forehead) {
+
+        const crownPoint = {
+          x: forehead.x,
+          y: forehead.y - eyeDist * 0.55
+        };
+
+        drawEmoji(
+          "crown",
+          crownPoint,
+          EMOJI.crown,
+          CROWN_SIZE,
+          0
+        );
+      }
+    }
+
+  </script>
+</body>
+</html>

@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>INTERACTIVE STUDIES</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <header class="site-header">
+    <h1>INTERACTIVE STUDIES</h1>
+    <nav aria-label="인터랙티브 작업">
+      <div role="tablist" aria-label="작업 선택">
+        <button role="tab" id="tab-symbol" aria-controls="study-panel" aria-selected="true" data-study="symbol">SYMBOL</button>
+        <button role="tab" id="tab-clock" aria-controls="study-panel" aria-selected="false" tabindex="-1" data-study="clock">CLOCK</button>
+        <button role="tab" id="tab-halftone" aria-controls="study-panel" aria-selected="false" tabindex="-1" data-study="halftone">HALFTONE</button>
+        <button role="tab" id="tab-emoji" aria-controls="study-panel" aria-selected="false" tabindex="-1" data-study="emoji">EMOJI CAM</button>
+      </div>
+    </nav>
+  </header>
+  <main>
+    <section id="study-panel" role="tabpanel" aria-labelledby="tab-symbol"></section>
+  </main>
+</body>
+</html>
